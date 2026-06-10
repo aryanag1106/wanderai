@@ -66,6 +66,17 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 }
 .tip-box strong { color: #b07c3f; }
 
+.budget-box {
+    background: #f0faf4;
+    border: 1px solid #b7e4c7;
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    margin-top: 1.5rem;
+}
+.budget-box strong { color: #1a7f4b; }
+.budget-box ul { margin: 0.5rem 0; padding-left: 1.2rem; }
+.budget-box li { margin-bottom: 0.3rem; color: #333; }
+
 .badge {
     display: inline-block;
     background: #eaf4fb;
@@ -121,12 +132,24 @@ with st.form("planner_form"):
              "Food & nightlife",
              "Luxury & relaxation",
              "Budget backpacker"])
+        travel_month = st.selectbox("🗓️ Month of travel",
+            ["January", "February", "March", "April", "May", "June",
+             "July", "August", "September", "October", "November", "December"])
+
     with col2:
-        budget = st.selectbox("💰 Budget",
-            ["Budget (< $50/day)",
-             "Mid-range ($50–$150/day)",
-             "Comfortable ($150–$300/day)",
-             "Luxury ($300+/day)"])
+        budget_per_person = st.number_input(
+            "💰 Budget per person (₹) — excluding flights",
+            min_value=1000,
+            max_value=1000000,
+            value=30000,
+            step=1000,
+            help="Total trip budget per person in Indian Rupees, not including flight tickets"
+        )
+        hotel_budget = st.selectbox("🏨 Hotel preference",
+            ["Budget (Hostel/Guesthouse ₹500–₹1500/night)",
+             "Mid-range (3-star ₹1500–₹4000/night)",
+             "Comfortable (4-star ₹4000–₹8000/night)",
+             "Luxury (5-star ₹8000+/night)"])
         travelers = st.selectbox("👥 Travelling as",
             ["Solo", "Couple", "Family with kids", "Group of friends"])
         interests = st.text_input("💡 Special interests (optional)",
@@ -139,36 +162,53 @@ if submitted:
         st.error("Please enter a destination first.")
         st.stop()
 
+    # Calculate rough per day budget
+    per_day_budget = budget_per_person // days
+
     with st.spinner("Planning your perfect trip…"):
 
-        prompt = f"""You are an expert travel planner. Create a detailed, practical {days}-day travel itinerary for {destination}.
+        prompt = f"""You are an expert travel planner for Indian travellers. Create a detailed, practical {days}-day travel itinerary for {destination}.
 
 Traveller details:
 - Travel style: {travel_style}
-- Budget: {budget}
+- Total budget per person (excluding flights): ₹{budget_per_person:,} INR
+- Per day budget: ₹{per_day_budget:,} INR
+- Hotel preference: {hotel_budget}
 - Travelling as: {travelers}
+- Travel month: {travel_month}
 - Special interests: {interests if interests else 'none specified'}
+
+IMPORTANT: All prices and costs MUST be in Indian Rupees (₹ INR). Convert all local prices to INR.
 
 Return ONLY a valid JSON object with this exact structure — no markdown, no extra text:
 {{
   "destination": "Full destination name",
   "tagline": "One evocative sentence about this destination",
-  "best_time": "Best time of year to visit",
-  "currency": "Local currency and rough exchange note",
+  "weather_in_month": "What weather to expect in {travel_month} and what to pack",
+  "currency": "Local currency name and approximate exchange rate to INR",
+  "hotel_recommendation": "Specific recommended hotel or area to stay matching the budget, with estimated price per night in INR",
   "days": [
     {{
       "day": 1,
       "theme": "Theme for the day",
-      "morning": "Detailed morning activity with specific places and tips",
-      "afternoon": "Detailed afternoon activity with specific places and tips",
-      "evening": "Detailed evening activity / dinner recommendation",
-      "food_tip": "Must-try food or restaurant today",
-      "transport": "How to get around today"
+      "morning": "Detailed morning activity with specific places, entry fees in INR",
+      "afternoon": "Detailed afternoon activity with specific places, costs in INR",
+      "evening": "Detailed evening activity / dinner recommendation with cost in INR",
+      "food_tip": "Must-try food or restaurant today with approximate cost in INR",
+      "transport": "How to get around today with cost in INR"
     }}
   ],
+  "budget_breakdown": {{
+    "hotel_total": "Estimated hotel cost for all {days} nights in INR",
+    "food_total": "Estimated food cost for all {days} days in INR",
+    "activities_total": "Estimated activities/entry fees for all {days} days in INR",
+    "transport_local": "Estimated local transport for all {days} days in INR",
+    "total_estimated": "Total estimated spend for {days} days in INR",
+    "budget_note": "Note on whether this fits the ₹{budget_per_person:,} budget and any savings tips"
+  }},
   "practical_tips": ["tip1", "tip2", "tip3", "tip4", "tip5"],
   "must_try_foods": ["food1", "food2", "food3", "food4"],
-  "estimated_daily_cost": "Rough cost estimate per day based on budget"
+  "packing_tips": "Key items to pack for {travel_month} travel to this destination"
 }}"""
 
         try:
@@ -203,17 +243,29 @@ Return ONLY a valid JSON object with this exact structure — no markdown, no ex
             st.code(raw)
             st.stop()
 
+    # ── Display ───────────────────────────────────────────────────────────────
     st.markdown(f"## 🗺️ {data.get('destination', destination)}")
     st.markdown(f"*{data.get('tagline', '')}*")
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("📅 Days", days)
-    m2.metric("💰 Budget", budget.split("(")[0].strip())
-    m3.metric("🗓️ Best time", data.get("best_time", "Year-round"))
-    m4.metric("💵 Daily est.", data.get("estimated_daily_cost", "See tips"))
+    m2.metric("💰 Budget", f"₹{budget_per_person:,}")
+    m3.metric("📅 Travelling in", travel_month)
+    m4.metric("👥 Group", travelers)
 
     st.divider()
 
+    # Weather info
+    weather = data.get("weather_in_month", "")
+    if weather:
+        st.info(f"🌤️ **Weather in {travel_month}:** {weather}")
+
+    # Hotel recommendation
+    hotel = data.get("hotel_recommendation", "")
+    if hotel:
+        st.success(f"🏨 **Hotel Recommendation:** {hotel}")
+
+    # Must-try foods
     foods = data.get("must_try_foods", [])
     if foods:
         st.markdown("**🍜 Must-try foods:**")
@@ -236,6 +288,25 @@ Return ONLY a valid JSON object with this exact structure — no markdown, no ex
 </div>"""
         st.markdown(card, unsafe_allow_html=True)
 
+    # Budget breakdown
+    budget_data = data.get("budget_breakdown", {})
+    if budget_data:
+        budget_items = "".join([
+            f"<li>🏨 <strong>Hotel ({days} nights):</strong> {budget_data.get('hotel_total', '')}</li>",
+            f"<li>🍽️ <strong>Food ({days} days):</strong> {budget_data.get('food_total', '')}</li>",
+            f"<li>🎯 <strong>Activities & Entry fees:</strong> {budget_data.get('activities_total', '')}</li>",
+            f"<li>🚌 <strong>Local transport:</strong> {budget_data.get('transport_local', '')}</li>",
+            f"<li>💰 <strong>Total estimated:</strong> {budget_data.get('total_estimated', '')}</li>",
+        ])
+        st.markdown(f"""
+<div class="budget-box">
+  <strong>💸 Budget Breakdown (per person, excluding flights)</strong>
+  <ul style="margin-top:0.5rem">{budget_items}</ul>
+  <p style="margin:0.5rem 0 0; font-size:0.9rem; color:#555">📝 {budget_data.get('budget_note', '')}</p>
+</div>
+""", unsafe_allow_html=True)
+
+    # Practical tips
     tips = data.get("practical_tips", [])
     if tips:
         tips_html = "".join([f"<li>{t}</li>" for t in tips])
@@ -245,6 +316,10 @@ Return ONLY a valid JSON object with this exact structure — no markdown, no ex
   <ul style="margin-top:0.5rem; padding-left:1.2rem">{tips_html}</ul>
 </div>
 """, unsafe_allow_html=True)
+
+    packing = data.get("packing_tips", "")
+    if packing:
+        st.markdown(f"🎒 **Packing tips for {travel_month}:** {packing}")
 
     st.markdown(f"**💱 Currency:** {data.get('currency', '')}")
     st.success("✅ Itinerary ready! Scroll up to review your full trip plan.")

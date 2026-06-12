@@ -549,3 +549,81 @@ Return ONLY a valid JSON object with this exact structure — no markdown, no ex
 
     st.markdown(f"{t['currency_label']} {data.get('currency', '')}")
     st.success(t["success"])
+
+# ── Reviews Section ───────────────────────────────────────────────────────────
+st.divider()
+st.markdown("## ⭐ User Reviews")
+st.markdown("Tried WanderAI? Leave a review below!")
+
+from datetime import datetime
+
+REVIEWS_FILE = "reviews.json"
+
+def load_reviews():
+    if os.path.exists(REVIEWS_FILE):
+        try:
+            with open(REVIEWS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_reviews(reviews):
+    try:
+        with open(REVIEWS_FILE, "w") as f:
+            json.dump(reviews, f, indent=2)
+        return True
+    except Exception:
+        return False
+
+with st.form("review_form", clear_on_submit=True):
+    r1, r2 = st.columns([2, 1])
+    with r1:
+        reviewer_name = st.text_input("👤 Your name", placeholder="e.g. Priya, Rahul...")
+        review_text = st.text_area("💬 Your review", placeholder="How was your experience with WanderAI? Did the itinerary help?", height=100)
+    with r2:
+        rating = st.select_slider("⭐ Rating", options=[1,2,3,4,5], value=5, format_func=lambda x: "⭐" * x)
+        destination_reviewed = st.text_input("🌍 Destination you planned", placeholder="e.g. Goa, Tokyo...")
+    submit_review = st.form_submit_button("📝 Submit Review")
+
+if submit_review:
+    if not reviewer_name.strip() or not review_text.strip():
+        st.warning("Please enter your name and review before submitting.")
+    else:
+        reviews = load_reviews()
+        reviews.insert(0, {
+            "name": reviewer_name.strip(),
+            "review": review_text.strip(),
+            "rating": rating,
+            "destination": destination_reviewed.strip() if destination_reviewed.strip() else "Not specified",
+            "date": datetime.now().strftime("%d %b %Y")
+        })
+        if save_reviews(reviews):
+            st.success("✅ Thank you for your review!")
+            st.rerun()
+        else:
+            st.error("Could not save review. Please try again.")
+
+reviews = load_reviews()
+
+if reviews:
+    avg_rating = sum(r["rating"] for r in reviews) / len(reviews)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Reviews", len(reviews))
+    c2.metric("Average Rating", f"{avg_rating:.1f} / 5")
+    c3.metric("Rating", "⭐" * round(avg_rating))
+    st.markdown("---")
+    for r in reviews:
+        stars = "⭐" * r["rating"] + "☆" * (5 - r["rating"])
+        st.markdown(f"""
+<div style="background:#fff;border:1px solid #e8e0d5;border-radius:12px;padding:1rem 1.2rem;margin-bottom:0.8rem;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem">
+    <strong style="color:#2c5364">{r['name']}</strong>
+    <span style="font-size:0.8rem;color:#888">{r.get('date','')}</span>
+  </div>
+  <div style="margin-bottom:0.4rem">{stars} &nbsp; <span style="font-size:0.85rem;color:#555">📍 {r.get('destination','')}</span></div>
+  <p style="margin:0;color:#333;line-height:1.6">{r['review']}</p>
+</div>
+""", unsafe_allow_html=True)
+else:
+    st.info("No reviews yet — be the first to leave one! 👆")

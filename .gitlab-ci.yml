@@ -1,0 +1,37 @@
+stages:
+  - lint
+  - security
+  - test
+
+lint:
+  stage: lint
+  image: python:3.10
+  script:
+    - pip install ruff mypy
+    - ruff check .
+    - mypy app.py --ignore-missing-imports
+  allow_failure: true
+
+secret-scan:
+  stage: security
+  image: python:3.10
+  script:
+    - pip install detect-secrets
+    - detect-secrets scan > .secrets.baseline
+  allow_failure: true
+
+dependency-audit:
+  stage: security
+  image: python:3.10
+  script:
+    - pip install pip-audit
+    - pip-audit -r requirements.txt
+  allow_failure: true
+
+coverage:
+  stage: test
+  image: python:3.10
+  script:
+    - pip install pytest pytest-cov streamlit groq
+    - pytest --cov=app --cov-report=term-missing || true
+  allow_failure: true

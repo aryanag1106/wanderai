@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+.streamlit/secrets.toml
+venv/
+__pycache__/
+*.pyc
+*.pyo
+reviews.json
+.specify/
+specs/
+*.md
+!README.md

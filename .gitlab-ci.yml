@@ -10,6 +10,14 @@ lint:
     - pip install ruff mypy
     - ruff check .
     - mypy app.py --ignore-missing-imports
+  allow_failure: false
+
+dead-code:
+  stage: lint
+  image: python:3.10
+  script:
+    - pip install vulture
+    - vulture app.py --min-confidence 70
   allow_failure: true
 
 secret-scan:
@@ -18,7 +26,7 @@ secret-scan:
   script:
     - pip install detect-secrets
     - detect-secrets scan > .secrets.baseline
-  allow_failure: true
+  allow_failure: false
 
 dependency-audit:
   stage: security
@@ -26,12 +34,12 @@ dependency-audit:
   script:
     - pip install pip-audit
     - pip-audit -r requirements.txt
-  allow_failure: true
+  allow_failure: false
 
-coverage:
+unit-tests:
   stage: test
   image: python:3.10
   script:
-    - pip install pytest pytest-cov streamlit groq
-    - pytest --cov=app --cov-report=term-missing || true
-  allow_failure: true
+    - pip install pytest pytest-cov streamlit groq requests
+    - pytest tests/ -v
+  allow_failure: false

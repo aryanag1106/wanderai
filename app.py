@@ -1,8 +1,10 @@
-import streamlit as st
-from groq import Groq
 import json
 import os
+from datetime import datetime
+
 import requests
+import streamlit as st
+from groq import Groq
 
 st.set_page_config(
     page_title="WanderAI – Travel Planner",
@@ -52,42 +54,46 @@ with st.sidebar:
         st.markdown("**🖥️ Ollama — Local Inference**")
         st.markdown("Runs 100% on your machine. No API key. No data sent anywhere.")
 
-        ollama_url = st.text_input(
-            "🌐 Ollama URL",
-            value="http://localhost:11434",
-            help="URL where Ollama is running locally"
+        local_engine = st.radio(
+            "🛠️ Local Engine",
+            ["LM Studio", "Ollama"],
+            help="LM Studio is easier — GUI, works on low-end laptops. Ollama needs terminal."
         )
-        ollama_model = st.selectbox(
-            "🧠 Local Model",
-            ["llama3.2", "llama3.1", "mistral", "gemma2", "phi3"],
-            help="Must be pulled first with: ollama pull llama3.2"
-        )
+
+        if local_engine == "LM Studio":
+            ollama_url = "http://localhost:1234"
+            st.caption("LM Studio runs at port 1234 automatically")
+            ollama_model = st.text_input("🧠 Model name", value="local-model",
+                help="Use whatever model name you loaded in LM Studio")
+        else:
+            ollama_url = st.text_input("🌐 Ollama URL", value="http://localhost:11434")
+            ollama_model = st.selectbox("🧠 Model", ["llama3.2", "llama3.1", "mistral", "gemma2", "phi3"])
 
         if st.button("🔌 Test Connection"):
             try:
-                r = requests.get(f"{ollama_url}/api/tags", timeout=3)
+                test_url = f"{ollama_url}/v1/models" if local_engine == "LM Studio" else f"{ollama_url}/api/tags"
+                r = requests.get(test_url, timeout=3)
                 if r.status_code == 200:
-                    models = [m["name"] for m in r.json().get("models", [])]
-                    if models:
-                        st.success(f"✅ Connected! Found: {', '.join(models[:3])}")
-                    else:
-                        st.warning("✅ Connected but no models. Run: `ollama pull llama3.2`")
+                    st.success("✅ Connected and ready!")
                 else:
-                    st.error("❌ Ollama not responding")
+                    st.error("❌ Not responding")
             except Exception:
-                st.error("❌ Can't connect. Is Ollama running? Try: `ollama serve`")
+                st.error("❌ Can't connect. Is the server running?")
 
         st.divider()
-        st.markdown("""
-**Quick Setup:**
+        if local_engine == "LM Studio":
+            st.markdown("""
+**LM Studio Setup (easy, no GPU needed):**
+1. Download → [lmstudio.ai](https://lmstudio.ai)
+2. Search & download **phi-3-mini** or **gemma-2b**
+3. Go to **Local Server** tab → **Start Server**
+4. Come back and Generate!
+""")
+        else:
+            st.markdown("""
+**Ollama Setup:**
 ```bash
-# 1. Install Ollama
-# → https://ollama.com
-
-# 2. Pull a model
 ollama pull llama3.2
-
-# 3. Start server
 ollama serve
 ```
 """)
@@ -443,19 +449,35 @@ Return ONLY a valid JSON object with this exact structure — no markdown, no ex
                 raw = response.choices[0].message.content.strip()
 
             else:
-                # ── Ollama Local Inference ─────────────────────────────────
-                url = f"{ollama_url}/api/chat"
-                payload = {
-                    "model": ollama_model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "stream": False,
-                    "options": {"temperature": 0.7, "num_predict": 4000}
-                }
-                r = requests.post(url, json=payload, timeout=120)
-                if r.status_code != 200:
-                    st.error(f"❌ Ollama error {r.status_code}: {r.text[:200]}")
-                    st.stop()
-                raw = r.json()["message"]["content"].strip()
+                # ── Local Inference (LM Studio or Ollama) ──────────────────
+                if local_engine == "LM Studio":
+                    # LM Studio uses OpenAI-compatible API
+                    url = f"{ollama_url}/v1/chat/completions"
+                    payload = {
+                        "model": ollama_model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.7,
+                        "max_tokens": 4000
+                    }
+                    r = requests.post(url, json=payload, timeout=180)
+                    if r.status_code != 200:
+                        st.error(f"❌ LM Studio error {r.status_code}: {r.text[:200]}")
+                        st.stop()
+                    raw = r.json()["choices"][0]["message"]["content"].strip()
+                else:
+                    # Ollama native API
+                    url = f"{ollama_url}/api/chat"
+                    payload = {
+                        "model": ollama_model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "stream": False,
+                        "options": {"temperature": 0.7, "num_predict": 4000}
+                    }
+                    r = requests.post(url, json=payload, timeout=180)
+                    if r.status_code != 200:
+                        st.error(f"❌ Ollama error {r.status_code}: {r.text[:200]}")
+                        st.stop()
+                    raw = r.json()["message"]["content"].strip()
 
         except Exception as e:
             st.error(f"API error: {e}")
@@ -554,8 +576,6 @@ Return ONLY a valid JSON object with this exact structure — no markdown, no ex
 st.divider()
 st.markdown("## ⭐ User Reviews")
 st.markdown("Tried WanderAI? Leave a review below!")
-
-from datetime import datetime
 
 REVIEWS_FILE = "reviews.json"
 
